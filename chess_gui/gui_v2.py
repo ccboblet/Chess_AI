@@ -13,6 +13,7 @@ square_white = 'MediumPurple3'
 square_black = 'LightPink3'
 piece_white = 'color'
 piece_black = 'color'
+# Label the edges of the board
 top = range(0,8)
 bottom = range(56,64)
 right = range(0,64,8)
