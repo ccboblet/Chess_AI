@@ -5,6 +5,11 @@ from numpy import uint8, where
 import os
 import copy
 
+# This class creates a board gui that is capable of detecting moves
+# It calls the rules class when a move is detected to recieve the updated position
+
+# Eventual features - clock, color choice, ai difficulty/style, etc
+
 # Define sizes and colors of pieces and squares
 board_size = 600
 square_size = int(board_size/8)
@@ -27,7 +32,7 @@ class Board:
         # Create tkinter root and canvas
         self.root = Tk()
         self.root.title("Bobble Chess")
-        self.root.iconbitmap('icon.ico')
+        self.root.iconbitmap('img_tk/icon.ico')
         self.root.geometry('800x600')
         self.board = Canvas(self.root)
         self.board.pack(fill='both', expand=True)

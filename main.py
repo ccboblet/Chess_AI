@@ -1,8 +1,9 @@
 from tkinter import mainloop
-from gui_v2 import *
+import gui
+import rules
 
-chess = Board()
-position = Position()
+chess = gui.Board()
+position = gui.Position()
 chess.load_images('img/')
 chess.make_pieces(position)
 chess.init_bindings()
