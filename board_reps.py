@@ -28,6 +28,8 @@ class Board_0x88:
         self.enpassant = np.uint8(0)
         # Move 1 = white, 0 = black
         self.turn = np.uint8(0b1)
+        # Set a flag for promotion
+        self.promotion = np.uint8(255)
 
 class Move:
     def __init__(self, start, stop, piece_id):

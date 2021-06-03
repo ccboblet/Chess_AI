@@ -2,6 +2,9 @@ from operator import pos
 import numpy as np
 from copy import copy
 
+# Make a function to find collisions
+# Disable castle through check
+
 # This class takes in a position and a move and outputs the new position
 # The format for the position is undecided.
 # Its fine if the format is bulky (takes lots of bits) as long as it evaluates fast
@@ -32,6 +35,8 @@ class Rules:
             0x74 : 0b1100
         }
 
+        self.king_castle = {}
+
     # Checks for illegal capture
     # If it is a legal move - 
     #   updates turn, en passant
@@ -44,15 +49,18 @@ class Rules:
     # Path collision
     # Check
     def check_move(self, position, move):
-        piece = position[move.start]
-        dest = position[move.stop]
+        piece = position.board[move.start]
+        dest = position.board[move.stop]
         if piece&8 ^ dest&8:
             self.path = move.start-move.stop if move.start>move.stop else move.stop-move.start
             self.sign = (move.start-move.stop)/self.path
             new = copy(position)
             new = self.rule_map[piece&7](new, move)
             if self.find_checks(new):
-                new.enpassant = move.stop
+                # if a new enpassant has not been set this turn:
+                # set the enpassant square outside of the board
+                if position.enpassant == new.enpassant:
+                    new.enpassant = 0xffff
                 new.turn ^= 1
                 position = new
         return position
@@ -107,98 +115,59 @@ class Rules:
             return position
     
     def king_rules(self, position, move):
+        # Extract the position of a rook given the path and the king's id
+        # Use that rook as the key to the castle_map dictionary
+        # XOR that value to give a bitmap that you can and with the castleflag
+        castle_id = (self.path-2)*7+self.piece_id-4
+        flag = self.castle_map[castle_id]^0b1111
+
         if self.path in [1,0xf,0x10,0x11]:
-            position[move.start] = 0
-            position[move.stop] = move.piece_id
-        elif self.path == 2 and move.start == 4 and position.castleflag&0x0100:
-            # check collision
-            pass
-        elif self.path == 2 and move.start == 0x74 and position.castleflag&0x0001
-        # if castle flag
-        # if no collision
-        # if correct direction
-        # if correct distance
-        bl = self.path == -2 and (self.position.castleflag and 0b1000) and self.move.piece_id==28
-        br = self.path == 2 and (self.position.castleflag and 0b0100) and self.move.piece_id==28
-        wl = self.path == -2 and (self.position.castleflag and 0b0010) and self.move.piece_id==4
-        wr = self.path == 2 and (self.position.castleflag and 0b0001) and self.move.piece_id==4
-        if bl or br or wl or wr:
-            # Check for collision
-            for i in range(self.move.start+self.sign,self.move.stop,self.sign):
-                if i in self.position.pieces:
-                    return False
-            else:
-                self.update_position()
-                stop = self.move.stop
-                self.move.start = stop+self.sign+(self.path-2)/4
-                self.move.stop = stop-self.sign
-                self.update_position()
-            if self.move.piece_id<16:
-                self.position.castleflag &= 0b0011
-            else:
-                self.position.castleflag &= 0b1100
-            return True
+            if move.start in self.castle_map:
+                position.castleflag &= self.castle_map[move.start]
+            position.board[move.start] = 0
+            position.board[move.stop] = move.piece_id
+        elif position.castleflag&flag:
+            for i in range(move.start+self.sign,move.stop,self.sign):
+                if position.board[i]:
+                    return position
+            position.board[move.start] = 0
+            position.board[move.stop+self.sign] = 0
+            position.board[move.stop] = move.piece_id
+            position.board[move.stop-self.sign] = castle_id
+            return position
 
-        if abs(self.path) in [1,7,8,9]:
-            if self.move.start in self.right and self.move.stop in self.left:
-                return False
-            if self.move.start in self.left and self.move.stop in self.right:
-                return False
-            self.update_position()
-            if self.move.piece_id<16:
-                self.position.castleflag &= 0b0011
-            else:
-                self.position.castleflag &= 0b1100
-            return True
-        else:
-            return False
-
-    def pawn_rules(self):
-        if self.move.start in self.right and self.move.stop in self.left:
-            return False
-        if self.move.start in self.left and self.move.stop in self.right:
-            return False
-
-        if abs(self.path) == 16:
-            for i in range(self.move.start+8*self.sign,self.move.stop+8*self.sign,8*self.sign):
-                if i in self.position.pieces:
-                    return False
-        if self.move.piece_id < 16:
-            if self.path == 16 and self.move.start<16:
-                self.position.enpassant = self.move.stop
-            elif self.path in [7,9] and self.move.stop in self.position.pieces:
-                pass
-            elif self.path in [7,9] and self.move.stop-self.position.enpassant ==  8:
-                self.move.stop = self.position.enpassant
-                self.update_position()
-                self.move.stop = self.position.enpassant+8
-                self.move.start = self.position.enpassant
-            elif (self.path==8) and (self.move.stop not in self.position.pieces):
-                pass
-            else:
-                return False
-
-        elif self.move.piece_id > 15:
-            if self.path == -16 and self.move.start>=48:
-                self.position.enpassant = self.move.stop
-            elif self.path in [-7,-9] and self.move.stop in self.position.pieces:
-                pass
-            elif self.path in [-7, -9] and self.move.stop-self.position.enpassant==-8:
-                self.move.stop = self.position.enpassant
-                self.update_position()
-                self.move.stop = self.position.enpassant-8
-                self.move.start = self.position.enpassant
-            elif (self.path==-8) and (self.move.stop not in self.position.pieces):
-                pass
-            else:
-                return False
-        if self.move.stop<8 or self.move.stop>55:
-            if self.move.stop == self.position.pieces[4] or self.move.stop == self.position.pieces[28]:
-                pass
-            else:
-                self.promotion()
-        self.update_position()
-        return True
+    def pawn_rules(self, position, move):
+        # Check up or down direction with color
+        # Check forward moves to ensure no capture
+        # Check for collisions on dash
+        # Check for capture on diagonal moves
+        # Check for en passant capture
+        if self.sign > 0 ^ move.piece_id&8:
+            return position
+        if self.path % 0x10 == 0:
+            if position.board[move.stop]:
+                return position
+            elif self.path == 0x20:
+                if position.board[move.start+0x10*self.sign]:
+                    return position
+                else:
+                    position.board[move.start] = 0
+                    position.board[move.stop] = move.piece_id
+                    position.enpassant = move.stop-0x10*self.sign
+            elif self.path == 0x10:
+                position.board[move.start] = 0
+                position.board[move.stop]  = move.piece_id
+        elif self.path in [0x11,0xf]:
+            if position.board[move.stop]:
+                position.board[move.start] = 0
+                position.board[move.stop] = move.piece_id
+            elif move.stop == position.enpassant:
+                position.board[move.start] = 0
+                position.board[move.stop-0x10*self.sign] = 0
+                position.board[move.stop] = move.piece_id
+        if move.stop >= 0x70 or move.stop <=0x07:
+            position.promotion = move.stop
+        return position
 
     def find_checks(self):
         if self.position.move == 0:
