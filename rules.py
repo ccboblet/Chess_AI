@@ -1,106 +1,119 @@
+from operator import pos
 import numpy as np
+from copy import copy
 
 # This class takes in a position and a move and outputs the new position
 # The format for the position is undecided.
 # Its fine if the format is bulky (takes lots of bits) as long as it evaluates fast
 
-# Do not need the same rules for the ai? 
+# Board representation - start with 0x88
+# 16x8 1 byte array what do I store in side board
+# Ideas: positional value, valid movement, bit board? 
 
 # The return needs to indicate promotion when necessary
 
-class rules:
+class Rules:
     def __init__(self):
-        self.right = range(0,64,8)
-        self.left = range(7,64,8)
+        self.rule_map = {
+            1 : self.rook_rules,
+            2 : self.knight_rules,
+            3 : self.bishop_rules,
+            4 : self.queen_rules,
+            5 : self.king_rules,
+            6 : self.pawn_rules
+        }
 
-    def update_position(self):
-        if self.position.enpassant != self.move.stop:
-            self.position.enpassant = np.uint8(0)
-        if self.move.stop in self.position.pieces:
-            captured = np.where(self.position.pieces == self.move.stop)
-            for i in captured[0]:
-                if i>15:
-                    self.position.pieces[i] = self.position.pieces[28]
-                else:
-                    self.position.pieces[i] = self.position.pieces[4]
-        for i in range(0,32):
-            if self.position.pieces[i] == self.move.start:
-                self.position.pieces[i] = self.move.stop
+        self.castle_map = {
+            0    : 0b0111,
+            7    : 0b1011,
+            4    : 0b0011,
+            0x70 : 0b1101,
+            0x77 : 0b1110,
+            0x74 : 0b1100
+        }
 
-    def rook_rules(self):
+    # Checks for illegal capture
+    # If it is a legal move - 
+    #   updates turn, en passant
+    #   returns new position
+    # If it is an illegal move - 
+    #   returns current position
+
+    # Legal move qualifications
+    # Capture
+    # Path collision
+    # Check
+    def check_move(self, position, move):
+        piece = position[move.start]
+        dest = position[move.stop]
+        if piece&8 ^ dest&8:
+            self.path = move.start-move.stop if move.start>move.stop else move.stop-move.start
+            self.sign = (move.start-move.stop)/self.path
+            new = copy(position)
+            new = self.rule_map[piece&7](new, move)
+            if self.find_checks(new):
+                new.enpassant = move.stop
+                new.turn ^= 1
+                position = new
+        return position
+
+    def rook_rules(self, position, move):
         # find path
         # find collisions
-        if abs(self.path) % 8 == 0:
-            #up or down
-            for i in range(self.move.start+8*self.sign,self.move.stop,8*self.sign):
-                if i in self.position.pieces:
-                    return False
-        elif abs(self.path)<8:
-            if self.sign<0 and self.move.start in self.right:
-                return False
-            if self.sign>0 and self.move.start in self.left:
-                return False
-            for i in range(self.move.start+self.sign,self.move.stop,self.sign):
-                if i in self.right or i in self.left:
-                    return False
-                if i in self.position.pieces:
-                    return False
+        # update castles
+        if self.path % 0x10 == 0:
+            step = 0x10
+        elif self.path < 8:
+            step = 8
         else:
-            return False
-        self.update_position()
-        if self.move.piece_id==0:
-            self.position.castleflag &= 0b0111
-        elif self.move.piece_id==7:
-            self.position.castleflag &= 0b1011
-        elif self.move.piece_id==24:
-            self.position.castleflag &= 0b1101
-        elif self.move.piece_id==31:
-            self.position.castleflag &= 0b1110
-        return True
+            return position
+        for i in range(move.start+step*self.sign,move.stop,step*self.sign):
+            if position.board[i]:
+                return position
+        if move.start in self.castle_map:
+            position.castleflag &= self.castle_map[move.start]
+        position.board[move.start] = 0
+        position.board[move.stop] = move.piece_id
+        return position
             
-    def knight_rules(self):
-        # 15 17 10 6 and negs
-        if (self.move.start // 8) == (self.move.stop // 8):
-            return False
-        if self.move.start in self.right and self.move.stop in self.left:
-            return False
-        if self.move.start in self.left and self.move.stop in self.right:
-            return False
-        if self.move.start in self.right and self.move.stop in self.left:
-            return False
-        if abs(self.path) in [15,17,10,6]:
-            self.update_position()
-            return True
+    def knight_rules(self, position, move):
+        if self.path in [0x1f,0x21,0xe,0x12]:
+            position.board[move.start] = 0
+            position.board[move.stop] = move.piece_id
+            return position
         else:
-            return False
+            return position
 
-    def bishop_rules(self):
-        if abs(self.path) % 7 == 0:
-            if self.sign<0 and self.move.stop in self.right:
-                return False
-            elif self.sign>0 and self.move.stop in self.left:
-                return False
-            for i in range(self.move.start+7*self.sign,self.move.stop,7*self.sign):
-                if i in self.right or i in self.left:
-                    return False
-                if i in self.position.pieces:
-                    return False
-        elif abs(self.path) % 9 == 0:
-            if self.sign>0 and self.move.stop in self.right:
-                return False
-            elif self.sign<0 and self.move.stop in self.left:
-                return False
-            for i in range(self.move.start+9*self.sign,self.move.stop,9*self.sign):
-                if i in self.right or i in self.left:
-                    return False
-                if i in self.position.pieces:
-                    return False
+    def bishop_rules(self, position, move):
+        if self.path % 0x11 == 0:
+            step = 0x11
+        elif self.path % 0xf == 0:
+            step = 0xf
         else:
-            return False
-        self.update_position()
-        return True
+            return position
+        for i in range(move.start+step*self.sign,move.stop,step*self.sign):
+            if position.board[i]:
+                return position
+        position.board[move.start] = 0
+        position.board[move.stop] = move.piece_id
+        return position
+
+    def queen_rules(self, position, move):
+        if self.path % 0x11 == 0 or self.path % 0xf == 0:
+            return self.bishop_rules(position, move)
+        elif self.path % 0x20 or self.path < 8:
+            return self.rook_rules(position, move)
+        else:
+            return position
     
-    def king_rules(self):
+    def king_rules(self, position, move):
+        if self.path in [1,0xf,0x10,0x11]:
+            position[move.start] = 0
+            position[move.stop] = move.piece_id
+        elif self.path == 2 and move.start == 4 and position.castleflag&0x0100:
+            # check collision
+            pass
+        elif self.path == 2 and move.start == 0x74 and position.castleflag&0x0001
         # if castle flag
         # if no collision
         # if correct direction
@@ -136,12 +149,6 @@ class rules:
                 self.position.castleflag &= 0b0011
             else:
                 self.position.castleflag &= 0b1100
-            return True
-        else:
-            return False
-
-    def queen_rules(self):
-        if self.rook_rules() or self.bishop_rules():
             return True
         else:
             return False
@@ -219,36 +226,6 @@ class rules:
                 continue
         return True
 
-    def save_position(self):
-        temp = Position()
-        temp.import_position(self.position)
-        self.history.append(temp)
-
     def takeback(self):
         self.position = self.history[-1]
         self.history.pop(-1)
-
-class Move:
-    def __init__(self, start, stop, piece_id):
-        self.start = start
-        self.stop = stop
-        self.piece_id = piece_id
-
-class Position:
-    def __init__(self):
-        # Each number represents a square and each index corresponds to a piece
-        self.pieces = np.uint8([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63])
-        # 2 sets of 2 for each castle 
-        # 1 = able to castle
-        # if the king move then both are set to 0
-        self.castleflag = 0b1111
-        # When a pawn double moves set the en passant square
-        self.enpassant = np.uint8(0)
-        # Move 1 = white, 0 = black
-        self.move = 0b1
-
-    def import_position(self, position):
-        self.pieces = np.copy(position.pieces)
-        self.castleflag = position.castleflag
-        self.enpassant = position.enpassant
-        self.move = position.move
