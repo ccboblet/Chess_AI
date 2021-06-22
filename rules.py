@@ -1,6 +1,7 @@
 from operator import pos
 import numpy as np
 from copy import copy
+import board_reps as br
 
 # Make a function to find collisions
 # Disable castle through check
@@ -35,8 +36,6 @@ class Rules:
             0x74 : 0b1100
         }
 
-        self.king_castle = {}
-
     # Checks for illegal capture
     # If it is a legal move - 
     #   updates turn, en passant
@@ -48,6 +47,13 @@ class Rules:
     # Capture
     # Path collision
     # Check
+    def make_move(self, position, move):
+        new = self.check_move(position, move)
+        if new.board[move.start] == 0:
+            if self.find_checks(position):
+                return new
+        return position
+
     def check_move(self, position, move):
         piece = position.board[move.start]
         dest = position.board[move.stop]
@@ -62,7 +68,7 @@ class Rules:
             # if a new enpassant has not been set this turn:
             # set the enpassant square outside of the board
             if position.enpassant == new.enpassant:
-                new.enpassant = 0xffff
+                new.enpassant = 0xff
             new.turn ^= 1
             position = new
         return position
@@ -171,34 +177,19 @@ class Rules:
         if move.stop >= 0x70 or move.stop <=0x07:
             position.promotion = move.stop
         return position
-""" 
-    def find_checks(self):
-        if self.position.move == 0:
-            king = 4
-            enemy = range(16,32)
-            enemy_king = 28
-        else:
-            king = 28
-            enemy = range(0,16)
-            enemy_king = 4
-        # check if each piece can cause the a check
-        # recursion! also promotion?
+
+    def find_checks(self, position):
+        enemy = dict()
+        king_enemy = [5,8] if position.turn == 1 else [13,0]
+        for i, j in enumerate(position.board):
+            if j == king_enemy[0]:
+                index = i
+            elif j&8 == king_enemy[1]:
+                enemy[i] = j
         for i in enemy:
-            if i != enemy_king and self.position.pieces[i] == self.position.pieces[enemy_king]:
-                continue
-            start = self.position.pieces[i]
-            stop = self.position.pieces[king]
-            piece_id = i
-            self.move = Move(start,stop,piece_id)
-            if self.check_move():
-                self.takeback()
+            move = br.Move(i,index,enemy[i])
+            test = self.check_move(position, move)
+            if test.board[index] == enemy[i]:
                 return False
-            else:
-                self.takeback()
-                continue
         return True
 
-    def takeback(self):
-        self.position = self.history[-1]
-        self.history.pop(-1)
- """

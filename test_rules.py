@@ -1,5 +1,7 @@
 from operator import pos
 import unittest
+
+from numpy.testing._private.utils import assert_equal
 import rules
 import board_reps as br
 from unittest.mock import MagicMock
@@ -10,6 +12,17 @@ class TestRules(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rule = rules.Rules()
+
+    def test_make_move(self):
+        rule = rules.Rules()
+        position = br.Board_0x88()
+        rule.check_move = MagicMock()
+        rule.check_move.return_value = br.B88_Blank(position)
+        rule.find_checks = MagicMock()
+        move = MagicMock()
+        rule.make_move(position, move)
+        rule.check_move.assert_called()
+        rule.find_checks.assert_called()
 
     def test_check_move(self):
         rule = rules.Rules()
@@ -181,7 +194,14 @@ class TestRules(unittest.TestCase):
         self.assertEqual(self.position.board[0x31], 6)
         self.assertEqual(self.position.board[0x11], 0)
 
-
-
+    def test_find_checks(self):
+        rule = rules.Rules()
+        position = br.Board_0x88()
+        position = br.B88_Blank(position)
+        position.board[0x40] = 5
+        position.board[0x50] = 9
+        position.turn = 1
+        temp = rule.find_checks(position)
+        self.assertEqual(temp, False)
 if __name__ == '__main__':
     unittest.main()
