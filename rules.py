@@ -1,6 +1,6 @@
 from operator import pos
 import numpy as np
-from copy import copy
+from copy import deepcopy
 import board_reps as br
 
 # Make a function to find collisions
@@ -50,7 +50,7 @@ class Rules:
     def make_move(self, position, move):
         new = self.check_move(position, move)
         if new.board[move.start] == 0:
-            if self.find_checks(position):
+            if self.find_checks(new):
                 return new
         return position
 
@@ -62,7 +62,7 @@ class Rules:
         if piece&8 ^ dest&8 or dest == 0:
             self.path = move.start-move.stop if move.start>move.stop else move.stop-move.start
             self.sign = (move.stop-move.start)//self.path
-            new = copy(position)
+            new = deepcopy(position)
             new = self.rule_map[piece&7](new, move)
             #if self.find_checks(new):
             # if a new enpassant has not been set this turn:
@@ -70,7 +70,7 @@ class Rules:
             if position.enpassant == new.enpassant:
                 new.enpassant = 0xff
             new.turn ^= 1
-            position = new
+            return new
         return position
 
     def rook_rules(self, position, move):
@@ -184,12 +184,14 @@ class Rules:
         for i, j in enumerate(position.board):
             if j == king_enemy[0]:
                 index = i
-            elif j&8 == king_enemy[1]:
+            elif j&8 == king_enemy[1] and j != 0:
                 enemy[i] = j
         for i in enemy:
             move = br.Move(i,index,enemy[i])
             test = self.check_move(position, move)
             if test.board[index] == enemy[i]:
+                #test.board[index] = king_enemy[0]
+                #test.board[i] = enemy[i]
                 return False
         return True
 
