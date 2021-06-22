@@ -131,7 +131,7 @@ class Board:
                 piece_id = self.piece_dict[self.moving]
 
                 move = Move(start, stop, piece_id)
-                self.position = self.rules.check_move(self.position,move)
+                self.position = self.rules.make_move(self.position,move)
 
                 self.clear_board()
                 self.make_pieces(br.B88_to_Print(self.position))

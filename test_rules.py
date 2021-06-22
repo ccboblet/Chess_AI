@@ -203,5 +203,6 @@ class TestRules(unittest.TestCase):
         position.turn = 1
         temp = rule.find_checks(position)
         self.assertEqual(temp, False)
+
 if __name__ == '__main__':
     unittest.main()
