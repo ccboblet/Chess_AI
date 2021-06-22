@@ -1,10 +1,14 @@
-from sys import path
-from tkinter import *
+import tkinter as tk
 from PIL import Image, ImageTk
-from numpy import uint8, where
 import os
-import copy
-from board_reps import Piece_Major_32 as Position
+import board_reps as br
+import rules
+
+'''
+Known issues
+Weird math in make_pieces() to get board coordinates
+Magic number 6 in selected()
+'''
 
 # This class creates a board gui that is capable of detecting moves
 # It calls the rules class when a move is detected to recieve the updated position
@@ -17,50 +21,43 @@ from board_reps import Piece_Major_32 as Position
 board_size = 600
 square_size = int(board_size/8)
 piece_size = int(board_size/10)
-square_white = 'MediumPurple3'
-square_black = 'LightPink3'
-piece_white = 'color'
-piece_black = 'color'
-top = range(0,8)
-bottom = range(56,64)
-right = range(0,64,8)
-left = range(7,64,8)
-edge = list()
-for i in top,bottom,right,left:
-    for j in i:
-        edge.append(j)
+
+# piece_dict - image_id: piece_id
 
 class Board:
     def __init__(self):
         # Create tkinter root and canvas
-        self.root = Tk()
+        self.root = tk.Tk()
         self.root.title("Bobble Chess")
         self.root.iconbitmap('img_tk/icon.ico')
         self.root.geometry('800x600')
-        self.board = Canvas(self.root)
+        self.board = tk.Canvas(self.root)
         self.board.pack(fill='both', expand=True)
-
-        # Create squares with defined colors
-        color = square_white
-        for i in range(0,board_size,square_size):
-            if color == square_white:
-                color = square_black
-            else:
-                color = square_white
-            for j in range(0,board_size,square_size):
-                self.board.create_rectangle(i,j,i+square_size,j+square_size,fill=color)
-                if color == square_white:
-                    color = square_black
-                else:
-                    color = square_white
 
         # Initialize variable used in select, hover and teleport
         self.moving = -1
-        self.source = 0
-        self.piece_id = range(0,32)
+        self.source = -1
         self.history = list()
 
-        self.position = Position()
+        self.position = br.Board_0x88()
+        self.rules = rules.Rules()
+
+    def make_squares(self,square_color=['MediumPurple3','LightPink3']):
+        white = square_color[0]
+        black = square_color[1]
+        # Create squares with defined colors
+        color = white
+        for i in range(0,board_size,square_size):
+            if color == white:
+                color = black
+            else:
+                color = white
+            for j in range(0,board_size,square_size):
+                self.board.create_rectangle(i,j,i+square_size,j+square_size,fill=color)
+                if color == white:
+                    color = black
+                else:
+                    color = white
 
     def load_images(self, folder):
         # Tkinter needs images to be global
@@ -68,45 +65,29 @@ class Board:
         renders = list()
 
         # Order piece images are stored in folder
-        order = [0,1,2,3,4,2,1,0,5,5,5,5,5,5,5,5,11,11,11,11,11,11,11,11,6,7,8,9,10,8,7,6]
-        images = os.listdir(folder)
-        for i in order:
-            image = Image.open(folder + images[i])
+        flname = os.listdir(folder)
+        for i in flname:
+            image = Image.open(folder + i)
             image = image.resize((piece_size,piece_size))
             renders.append(ImageTk.PhotoImage(image))
 
-    def make_promote_pieces(self):
-        global renders
-        order = [0,1,2,3,24,25,26,27]
-        self.promotion_dict = {}
-        center = self.move.stop
-        board_center = self.translate_xy([center])
-        color = ((self.move.piece_id // 8)-1)*4 # 1 is black 2 is white
-        for i in range(0,4):
-            offset = square_size*i-square_size*1.5
-            self.promotion_dict[self.board.create_image(board_center[0][0]-offset,board_center[0][1],anchor=CENTER,image=renders[order[i+color]])] = order[i+color]
-
+    # Given any position print the pieces to the board. The pieces need to already be loaded.
     def make_pieces(self, position):
         # Tkinter needs image variables to be global
         global renders
 
+        # Create a dict to connect tkinter image_id with the piece_id
+        # Position is a dict in format square(0-63): piece_id(0-11)
         self.piece_dict = {}
-        self.position = position
         
-        xy_position = self.translate_xy(self.position.pieces)
-        for i in range(0,32):
-            if i!=4 and i!=28:
-                if self.position.pieces[i] == self.position.pieces[4] or self.position.pieces[i] == self.position.pieces[28]:
-                    self.piece_dict[-i] = -1
-                    continue
-            self.piece_dict[self.board.create_image(xy_position[i][0],xy_position[i][1],anchor=CENTER,image=renders[self.piece_id[i]])] = self.piece_id[i]
-        return True
+        for i in position:
+            m = (i>>3)*square_size+square_size/2
+            n = (i&7)*square_size+square_size/2
+            self.piece_dict[self.board.create_image(n,m,anchor=tk.CENTER,image=renders[position[i]])] = position[i]+1 if position[i] <= 5 else position[i]+3
 
     def clear_board(self):
-        self.piece_id = list()
         all = self.board.find_all()
         for i in self.piece_dict:
-            self.piece_id.append(self.piece_dict[i])
             if i in all:
                 self.board.delete(i)
 
@@ -118,7 +99,7 @@ class Board:
             objects = self.board.find_overlapping(x-5,y-5,x+5,y+5)
             for piece in objects:
                 if piece in self.piece_dict:
-                    if (self.piece_dict[piece] < 16) ^ (self.position.move == 0):
+                    if (self.piece_dict[piece] <= 6) ^ (self.position.turn == 0):
                         break
                     self.moving = piece
                     self.source = self.board.coords(self.moving)
@@ -128,30 +109,32 @@ class Board:
     def hover_piece(self):
         # Make selected piece follow the mouse
         def hover(e):
-            if self.moving in self.board.find_all():
+            x = e.x
+            y = e.y
+            if self.moving >= 0:
                 location = self.board.coords(self.moving)
-                self.board.move(self.moving, e.x-location[0],e.y-location[1])
+                self.board.move(self.moving, x-location[0],y-location[1])
 
         self.board.bind('<B1-Motion>', hover)
 
     def teleport_piece(self):
         def teleport(e):
-            if self.moving in self.board.find_all():
+            if self.moving >= 0:
+                x = e.x
+                y = e.y
                 # Translate 600x600 board coordinates to 0-63 position coordinates
                 start = self.board_to_coord(self.source)
-                stop = self.board_to_coord([e.x,e.y])
-
+                stop = self.board_to_coord([x,y])
+                if x>board_size or y>board_size:
+                    stop = start
                 # Test if move is legal
                 piece_id = self.piece_dict[self.moving]
-                self.move = Move(start, stop, piece_id)
-                if self.check_move():
-                    if self.find_checks():
-                        self.position.move ^= 1
-                    else:
-                        self.takeback()
+
+                move = Move(start, stop, piece_id)
+                self.position = self.rules.check_move(self.position,move)
 
                 self.clear_board()
-                self.make_pieces(self.position)
+                self.make_pieces(br.B88_to_Print(self.position))
                 self.moving=-1
 
         self.board.bind('<ButtonRelease-1>', teleport)
@@ -192,7 +175,7 @@ class Board:
     def board_to_coord(self, board):
         x = int(board[0]/square_size)
         y = int(board[1]/square_size)
-        return x+(y*8)
+        return x+(y*0x10)
 
     # 0-63 to 0-8,0-8 coordinates
     # go straight to board coords

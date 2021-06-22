@@ -51,18 +51,20 @@ class Rules:
     def check_move(self, position, move):
         piece = position.board[move.start]
         dest = position.board[move.stop]
-        if piece&8 ^ dest&8:
+        if piece != move.piece_id:
+            return position
+        if piece&8 ^ dest&8 or dest == 0:
             self.path = move.start-move.stop if move.start>move.stop else move.stop-move.start
-            self.sign = (move.start-move.stop)/self.path
+            self.sign = (move.stop-move.start)//self.path
             new = copy(position)
             new = self.rule_map[piece&7](new, move)
-            if self.find_checks(new):
-                # if a new enpassant has not been set this turn:
-                # set the enpassant square outside of the board
-                if position.enpassant == new.enpassant:
-                    new.enpassant = 0xffff
-                new.turn ^= 1
-                position = new
+            #if self.find_checks(new):
+            # if a new enpassant has not been set this turn:
+            # set the enpassant square outside of the board
+            if position.enpassant == new.enpassant:
+                new.enpassant = 0xffff
+            new.turn ^= 1
+            position = new
         return position
 
     def rook_rules(self, position, move):
@@ -109,7 +111,7 @@ class Rules:
     def queen_rules(self, position, move):
         if self.path % 0x11 == 0 or self.path % 0xf == 0:
             return self.bishop_rules(position, move)
-        elif self.path % 0x20 or self.path < 8:
+        elif self.path % 0x10 == 0 or self.path < 8:
             return self.rook_rules(position, move)
         else:
             return position
@@ -118,23 +120,24 @@ class Rules:
         # Extract the position of a rook given the path and the king's id
         # Use that rook as the key to the castle_map dictionary
         # XOR that value to give a bitmap that you can and with the castleflag
-        castle_id = (self.path-2)*7+self.piece_id-4
-        flag = self.castle_map[castle_id]^0b1111
 
         if self.path in [1,0xf,0x10,0x11]:
             if move.start in self.castle_map:
                 position.castleflag &= self.castle_map[move.start]
             position.board[move.start] = 0
             position.board[move.stop] = move.piece_id
-        elif position.castleflag&flag:
-            for i in range(move.start+self.sign,move.stop,self.sign):
-                if position.board[i]:
-                    return position
-            position.board[move.start] = 0
-            position.board[move.stop+self.sign] = 0
-            position.board[move.stop] = move.piece_id
-            position.board[move.stop-self.sign] = castle_id
-            return position
+        elif self.path == 0x02:
+            rook_position = move.start+3 if self.sign == 1 else move.start-4
+            flag = self.castle_map[rook_position]^0b1111
+            if flag&position.castleflag:
+                for i in range(move.start+self.sign,rook_position,self.sign):
+                    if position.board[i]:
+                        return position
+                position.board[move.start] = 0
+                position.board[move.stop] = move.piece_id
+                position.board[rook_position] = 0
+                position.board[move.stop-self.sign] = move.piece_id-4
+        return position
 
     def pawn_rules(self, position, move):
         # Check up or down direction with color
@@ -142,7 +145,7 @@ class Rules:
         # Check for collisions on dash
         # Check for capture on diagonal moves
         # Check for en passant capture
-        if self.sign > 0 ^ move.piece_id&8:
+        if (self.sign<0) ^ (move.piece_id>>3):
             return position
         if self.path % 0x10 == 0:
             if position.board[move.stop]:
@@ -168,7 +171,7 @@ class Rules:
         if move.stop >= 0x70 or move.stop <=0x07:
             position.promotion = move.stop
         return position
-
+""" 
     def find_checks(self):
         if self.position.move == 0:
             king = 4
@@ -198,3 +201,4 @@ class Rules:
     def takeback(self):
         self.position = self.history[-1]
         self.history.pop(-1)
+ """
